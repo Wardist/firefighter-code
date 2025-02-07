@@ -1,0 +1,307 @@
+
+'''GCBASIC Program.
+'''--------------------------------------------------------------------------------------------------------------------------------
+'''Description:  [Fire Fighter Code]
+'''
+'''@author     [Oweis El-Hag]
+'''@licence    GPL
+'''@version    [todo]
+'''@date       [4/22/2024]
+'''********************************************************************************
+
+'''----- Includes
+#chip 16f18875
+
+DIR porta.5 In
+DIR porta.2 In
+DIR porta.1 In
+
+DIM wallSensor1 as Byte
+DIM wallSensor2 as Byte
+
+DIM wallVolt1 as Byte
+DIM wallVolt2 as Byte
+
+DIM flameSensor as Byte
+
+#define RIGHTMOTORFW PORTB.4
+#define RIGHTMOTORBW PORTB.3
+#define LEFTMOTORBW PORTB.7
+#define LEFTMOTORFW PORTB.6
+
+#define FAN PORTB.2
+
+#define PHOTO PORTC.3
+
+#define LCD_RS PORTD.0
+#define LCD_RW PORTD.1
+#define LCD_ENABLE PORTD.2
+#define LCD_DB4 PORTD.4
+#define LCD_DB5 PORTD.5
+#define LCD_DB6 PORTD.6
+#define LCD_DB7 PORTD.7
+#define LCD_IO 4
+#define LCD_LINES 2
+
+flameSeen = False
+canTurnRight = False
+flameAdjust = False 
+forceLastRoom = False
+
+corners = 0
+cooldown = 0
+
+Dir RIGHTMOTORFW Out
+Dir RIGHTMOTORBW Out
+Dir LEFTMOTORFW Out
+Dir LEFTMOTORBW Out
+
+Dir PHOTO In
+
+Dir PORTD.0 Out
+Dir PORTD.1 Out
+Dir PORTD.2 Out
+Dir PORTD.4 Out
+Dir PORTD.5 In
+Dir PORTD.6 Out
+Dir PORTD.7 In
+
+Dir FAN Out
+
+Dir PORTB.7 Out
+Dir PORTB.6 Out
+Dir PORTB.5 Out
+Dir PORTB.4 Out
+Dir PORTB.3 Out
+Dir PORTB.2 Out
+Dir PORTB.1 Out
+Dir PORTB.0 Out
+
+// 1,2,1,2
+DO Forever
+    wallVolt1 = ReadAD(AN2)
+    wallVolt2 = ReadAD(AN1)
+
+    flameSensor = ReadAD(AN5)
+
+    wallSensor1 = ((6787/(wallVolt1-3))-4)/5
+    wallSensor2 = ((6787/(wallVolt2-3))-4)/5
+
+    cls
+
+    locate 0,0
+    print "Flame: "
+    print flameSensor
+
+    locate 0,10
+    print "C: "
+    print corners
+
+    locate 1,0
+    print "WL: "
+    print wallSensor1
+
+    locate 1,6
+    print "WF: "
+    print wallSensor2
+    
+    /// Line Detection
+    // < 0.8 is white
+    // > 1.8 is black
+    // in between 0.8 and 1.8 is float
+
+    if cooldown < 200 Then 
+        cooldown = cooldown + 1
+    End if 
+
+    // Its at the last corner now
+    if corners = 11 Then
+        forceLastRoom = True
+        corners = 12
+    End if
+
+    if forceLastRoom = True Then
+        FORCEMOVE
+    End if 
+
+    // Goes forward if it is close enough to wall
+    if wallSensor1 = 12 Then
+        if canTurnRight = False Then
+            GOFW
+        End if
+    End if
+
+    // Wall Left
+    if canTurnRight = False Then
+        if flameSeen = False Then
+            if forceLastRoom = False Then
+                if wallSensor1 > 12 Then
+                    if wallSensor1 > 4 Then 
+                        SET LEFTMOTORFW OFF
+                        SET RIGHTMOTORFW ON 
+                    End if 
+                End if
+                if wallSensor1 < 12 Then
+                    if wallSensor1 > 4 Then
+                        SET LEFTMOTORFW ON
+                        SET RIGHTMOTORFW OFF
+                    End if 
+                End if
+            End if 
+        End if
+    End if 
+
+    if canTurnRight = True Then
+        CORNERTURN
+    End if 
+
+    if wallSensor2 < 13 Then
+        if wallSensor2 > 4 Then 
+            if flameSeen = False Then 
+                canTurnRight = True
+            End if
+        End if 
+    End if
+    
+    
+    if flameSensor < 8 Then
+        if wallSensor2 < 20 Then
+            flameSeen = True
+        End if 
+    End if
+
+    // Sets flame off if there is no fire
+    if flameSensor > 240 Then 
+        flameSeen = False
+    End if 
+    
+    if flameSeen = True Then
+        STOP
+        PUTOUTFLAME
+    Else 
+        SET FAN OFF
+        flameSeen = False
+    End if
+
+    wait 10 ms
+Loop
+
+Sub UPDATESENSORS
+    wallVolt1 = ReadAD(AN2)
+    wallVolt2 = ReadAD(AN1)
+
+    flameSensor = ReadAD(AN5)
+
+    wallSensor1 = ((6787/(wallVolt1-3))-4)/5
+    wallSensor2 = ((6787/(wallVolt2-3))-4)/5
+end sub
+
+Sub FORCEMOVE 
+    TURNRIGHT 
+    wait 650 ms 
+
+    forceLastRoom = False
+end sub 
+
+Sub PUTOUTFLAME
+    if wallSensor1 > 12 Then
+        LEFTADJUST
+    End if
+
+    SET FAN ON
+
+    TURNLEFT90
+    wait 300 ms
+
+    STOP
+    wait 50 ms
+
+    TURNRIGHT90
+    wait 250 ms
+
+    STOP
+    wait 50 ms
+end sub
+
+Sub CORNERTURN
+    TURNRIGHT90
+    wait 225 ms
+    STOP 
+    UPDATESENSORS
+    wait 100 ms
+    
+    canTurnRight = False
+    
+    if cooldown > 100 Then 
+        corners = corners + 1
+        cooldown = 0
+    End if 
+end sub
+
+Sub GOFW
+    SET LEFTMOTORBW OFF
+    SET LEFTMOTORFW ON
+    SET RIGHTMOTORFW ON
+    SET RIGHTMOTORBW OFF
+end sub
+
+Sub GOBW
+    SET LEFTMOTORBW ON
+    SET LEFTMOTORFW OFF
+    SET RIGHTMOTORFW OFF
+    SET RIGHTMOTORBW ON
+end sub
+
+Sub TURNRIGHT
+    SET LEFTMOTORFW ON
+    SET LEFTMOTORBW OFF
+    SET RIGHTMOTORFW OFF 
+    SET RIGHTMOTORBW OFF
+end sub
+
+Sub TURNRIGHT90
+    SET LEFTMOTORFW ON
+    SET LEFTMOTORBW OFF
+    SET RIGHTMOTORFW OFF 
+    SET RIGHTMOTORBW ON
+end sub
+
+Sub RIGHTADJUST
+    TURNLEFT
+    wait 100 ms 
+    GOFW
+end sub
+
+Sub LEFTADJUST
+    TURNRIGHT
+    wait 100 ms 
+    GOFW
+end sub
+
+Sub TURNLEFT
+    SET LEFTMOTORFW OFF
+    SET LEFTMOTORBW OFF
+    SET RIGHTMOTORFW ON
+    SET RIGHTMOTORBW OFF
+end sub
+
+Sub TURNLEFT90
+    SET LEFTMOTORFW OFF
+    SET LEFTMOTORBW ON
+    SET RIGHTMOTORFW ON
+    SET RIGHTMOTORBW OFF
+end sub
+
+Sub SPIN
+    SET LEFTMOTORFW OFF
+    SET LEFTMOTORBW ON
+    SET RIGHTMOTORFW ON
+    SET RIGHTMOTORBW OFF
+end sub
+
+Sub STOP
+    SET LEFTMOTORBW OFF
+    SET LEFTMOTORFW OFF
+    SET RIGHTMOTORFW OFF
+    SET RIGHTMOTORBW OFF
+end sub
